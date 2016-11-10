@@ -38,9 +38,9 @@ __decorate([
 /** @type {Array<DecoratorInvocation>} */
 DecoratorTest.decorators;
 /** @nocollapse
-@type {Array<{type: ?, decorators: (Array<DecoratorInvocation>|undefined)}>} */
+@type {Array<(null|!{type: ?, decorators: ((undefined|!Array<DecoratorInvocation>)|undefined)})>} */
 DecoratorTest.ctorParameters;
-/** @type {Object<string,Array<DecoratorInvocation>>} */
+/** @type {Object<string,!Array<DecoratorInvocation>>} */
 DecoratorTest.propDecorators;
 /** @type {number} */
 DecoratorTest.prototype.x;
@@ -59,5 +59,5 @@ DecoratedClass.prototype.z;
 function DecoratorInvocation() { }
 /** @type {Function} */
 DecoratorInvocation.prototype.type;
-/** @type {Array<?>} */
+/** @type {(undefined|!Array<?>)} */
 DecoratorInvocation.prototype.args;

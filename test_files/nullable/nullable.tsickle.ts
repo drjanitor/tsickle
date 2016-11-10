@@ -7,13 +7,13 @@ class Primitives {
 }
 
 // tsickle -> Closure type declarations
- /** @type {string} */
+ /** @type {(null|string)} */
 Primitives.prototype.nullable;
- /** @type {number} */
+ /** @type {(undefined|number)} */
 Primitives.prototype.undefinable;
- /** @type {string} */
+ /** @type {(undefined|null|string)} */
 Primitives.prototype.nullableUndefinable;
- /** @type {string} */
+ /** @type {(undefined|string)} */
 Primitives.prototype.optional;
 
 
@@ -30,12 +30,12 @@ class NonPrimitives {
 // tsickle -> Closure type declarations
  /** @type {NonPrimitive} */
 NonPrimitives.prototype.nonNull;
- /** @type {NonPrimitive} */
+ /** @type {(null|!NonPrimitive)} */
 NonPrimitives.prototype.nullable;
- /** @type {NonPrimitive} */
+ /** @type {(undefined|!NonPrimitive)} */
 NonPrimitives.prototype.undefinable;
- /** @type {NonPrimitive} */
+ /** @type {(undefined|null|!NonPrimitive)} */
 NonPrimitives.prototype.nullableUndefinable;
- /** @type {NonPrimitive} */
+ /** @type {(undefined|!NonPrimitive)} */
 NonPrimitives.prototype.optional;
 

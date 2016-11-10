@@ -31,9 +31,9 @@ function MultipleConstructorsNamesAndTypes(a_or_b) {}
  * @param {number} a
  * @param {number} b
  * @param {number} c
- * @param {string|Array<string>} normal_or_vertexNormals
- * @param {boolean|Array<boolean>} color_or_vertexColors
- * @param {number} materialIndex
+ * @param {(undefined|string)|(undefined|!Array<string>)} normal_or_vertexNormals
+ * @param {(undefined|boolean)|(undefined|!Array<boolean>)} color_or_vertexColors
+ * @param {(undefined|number)} materialIndex
  */
 function MultipleConstructorsComplexMatrix(a, b, c, normal_or_vertexNormals, color_or_vertexColors, materialIndex) {}
 
@@ -115,7 +115,7 @@ OverloadValueOf.prototype.valueOf = function() {};
 function Merged() {}
 
 /**
- * @param {(string|number|Array<OverloadBigMix>)} a_or_c_or_e_or_f
+ * @param {(string|number|!Array<!OverloadBigMix>)} a_or_c_or_e_or_f
  * @param {number} opt_b
  * @return {(number|boolean|void)}
  */

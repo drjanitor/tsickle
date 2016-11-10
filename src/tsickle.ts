@@ -339,7 +339,7 @@ class ClosureRewriter extends Rewriter {
     }
     let translator = new TypeTranslator(typeChecker, context, this.options.typeBlackListPaths);
     translator.warn = msg => this.debugWarn(context, msg);
-    return translator.translate(type, destructuring);
+    return translator.translate(type, !!destructuring);
   }
 
   /**

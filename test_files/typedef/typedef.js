@@ -2,7 +2,7 @@ goog.module('test_files.typedef.typedef');var module = module || {id: 'test_file
 /** @typedef {number} */
 var MyType;
 var /** @type {number} */ y = 3;
-/** @typedef {{value: number, next: ?}} */
+/** @typedef {{value: number, next: !?}} */
 var Recursive;
 /** @typedef {string} */
 exports.ExportedType;
