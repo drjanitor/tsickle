@@ -99,10 +99,7 @@ __decorate([
     __metadata("design:paramtypes", [Number])
 ], MyClass.prototype, "doNotExportThisSetter", null);
 function MyClass_tsickle_Closure_declarations() {
-    /**
-     * @type {boolean}
-     * @export
-     */
+    /** @type {boolean} */
     MyClass.prototype.exportMe;
     /** @type {number} */
     MyClass.prototype.doNotExportMe;
