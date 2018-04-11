@@ -1,8 +1,8 @@
-goog.module('test_files.jsdoc_types.untyped.module2');var module = module || {id: 'test_files/jsdoc_types.untyped/module2.js'};/**
+/**
  * @fileoverview added by tsickle
  * @suppress {checkTypes} checked by tsc
  */
-
+goog.module('test_files.jsdoc_types.untyped.module2');var module = module || {id: 'test_files/jsdoc_types.untyped/module2.js'};
 class ClassOne {
 }
 exports.ClassOne = ClassOne;
@@ -18,6 +18,9 @@ function Interface_tsickle_Closure_declarations() {
     /** @type {?} */
     Interface.prototype.x;
 }
+/**
+ * @template T
+ */
 class ClassWithParams {
 }
 exports.ClassWithParams = ClassWithParams;

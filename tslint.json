@@ -5,7 +5,6 @@
     "ban": [true,
       ["fit"],
       ["fdescribe"],
-      ["xit"],
       ["xdescribe"],
       ["fitAsync"],
       ["xitAsync"],
@@ -51,6 +50,7 @@
       "ban-keywords",
       "allow-leading-underscore",
       "allow-trailing-underscore"
-    ]
+    ],
+    "file-header": [true, "Copyright Google Inc\\."]
   }
 }

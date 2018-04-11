@@ -2,48 +2,10 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run Tests",
       "type": "node",
-      "request": "launch",
-      "program": "${workspaceRoot}/node_modules/.bin/_mocha",
-      "args": [
-        "--colors",
-        "--timeout=0",
-        "./built/test"
-      ],
-      "cwd": "${workspaceRoot}",
-      "runtimeArgs": [
-        "--nolazy"
-      ],
-      "env": {
-        "NODE_ENV": "development"
-      },
-      "console": "internalConsole",
-      "sourceMaps": true,
-      "outDir": "${workspaceRoot}/built"
-    },
-    {
-      "name": "Run file based tests",
-      "type": "node",
-      "request": "launch",
-      "program": "${workspaceRoot}/node_modules/.bin/_mocha",
-      "args": [
-        "--colors",
-        "--timeout=0",
-        "./built/test/tsickle_test.js"
-      ],
-      "cwd": "${workspaceRoot}",
-      "runtimeArgs": [
-        "--nolazy"
-      ],
-      "env": {
-        "NODE_ENV": "development",
-        "TEST_FILTER": "^class$"
-      },
-      "console": "internalConsole",
-      "sourceMaps": true,
-      "outDir": "${workspaceRoot}/built"
+      "request": "attach",
+      "name": "Attach using --inspect",
+      "port": 9229
     }
-
   ]
 }

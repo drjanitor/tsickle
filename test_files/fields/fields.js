@@ -1,8 +1,9 @@
-goog.module('test_files.fields.fields');var module = module || {id: 'test_files/fields/fields.js'};/**
+// Warning at test_files/fields/fields.ts:22:5: unhandled anonymous type with constructor signature but no declaration
+/**
  * @fileoverview added by tsickle
  * @suppress {checkTypes} checked by tsc
  */
-class FieldsTest {
+goog.module('test_files.fields.fields');var module = module || {id: 'test_files/fields/fields.js'};class FieldsTest {
     /**
      * @param {number} field3
      */
@@ -35,3 +36,21 @@ let /** @type {!FieldsTest} */ fieldsTest = new FieldsTest(3);
 fieldsTest.field1 = 'hi';
 let /** @type {?} */ AnonymousClass = class {
 };
+class BaseThatThrows {
+    /**
+     * @return {number}
+     */
+    get throwMe() { throw new Error(); }
+}
+class Derived extends BaseThatThrows {
+}
+function Derived_tsickle_Closure_declarations() {
+    /**
+     * Note: in Closure, this type is declared via an annotation on
+     * Derived.prototype.throwMe, which throws if it's evaluated.
+     * So any tsickle output that puts the type declaration at the
+     * top level is wrong.
+     * @type {number}
+     */
+    Derived.prototype.throwMe;
+}

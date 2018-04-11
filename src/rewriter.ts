@@ -6,9 +6,9 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import * as ts from 'typescript';
-
+import {isClosureFileoverviewComment} from './fileoverview_comment_transformer';
 import {NOOP_SOURCE_MAPPER, SourceMapper, SourcePosition} from './source_map_utils';
+import * as ts from './typescript';
 
 /**
  * A Rewriter manages iterating through a ts.SourceFile, copying input
@@ -35,12 +35,29 @@ export abstract class Rewriter {
   constructor(public file: ts.SourceFile, private sourceMapper: SourceMapper = NOOP_SOURCE_MAPPER) {
   }
 
-  getOutput(): {output: string, diagnostics: ts.Diagnostic[]} {
+  getOutput(prefix?: string): {output: string, diagnostics: ts.Diagnostic[]} {
     if (this.indent !== 0) {
       throw new Error('visit() failed to track nesting');
     }
+    let out = this.output.join('');
+    if (prefix) {
+      // Insert prefix after any leading @fileoverview comments, so they still come first in the
+      // file. This must not use file.getStart() (comment position in the input file), but rahter
+      // check comments in the new output, as those (in particular for comments) are unrelated.
+      let insertionIdx = 0;
+      for (const cr of ts.getLeadingCommentRanges(out, 0) || []) {
+        if (isClosureFileoverviewComment(out.substring(cr.pos, cr.end))) {
+          insertionIdx = cr.end;
+          // Include space (in particular line breaks) after a @fileoverview comment; without the
+          // space seperating it, TypeScript might elide the emit.
+          while (insertionIdx < out.length && out[insertionIdx].match(/\s/)) insertionIdx++;
+        }
+      }
+      out = out.substring(0, insertionIdx) + prefix + out.substring(insertionIdx);
+      this.sourceMapper.shiftByOffset(prefix.length);
+    }
     return {
-      output: this.output.join(''),
+      output: out,
       diagnostics: this.diagnostics,
     };
   }
@@ -107,8 +124,14 @@ export abstract class Rewriter {
     this.skipCommentsUpToOffset = oldSkipCommentsUpToOffset;
   }
 
-  writeLeadingTrivia(node: ts.Node) {
-    this.writeRange(node, node.getFullStart(), node.getStart());
+  /**
+   * Writes all leading trivia (whitespace or comments) on node, or all trivia up to the given
+   * position. Also marks those trivia as "already emitted" by shifting the skipCommentsUpTo marker.
+   */
+  writeLeadingTrivia(node: ts.Node, upTo = 0) {
+    const upToOffset = upTo || node.getStart();
+    this.writeRange(node, node.getFullStart(), upTo || node.getStart());
+    this.skipCommentsUpToOffset = upToOffset;
   }
 
   addSourceMapping(node: ts.Node) {
@@ -180,7 +203,7 @@ export abstract class Rewriter {
 
   error(node: ts.Node, messageText: string) {
     this.diagnostics.push({
-      file: this.file,
+      file: node.getSourceFile(),
       start: node.getStart(),
       length: node.getEnd() - node.getStart(),
       messageText,
@@ -195,6 +218,14 @@ export function getIdentifierText(identifier: ts.Identifier): string {
   // NOTE: the 'text' property on an Identifier may be escaped if it starts
   // with '__', so just use getText().
   return identifier.getText();
+}
+
+/** Returns a dot-joined qualified name (foo.bar.Baz). */
+export function getEntityNameText(name: ts.EntityName): string {
+  if (ts.isIdentifier(name)) {
+    return getIdentifierText(name);
+  }
+  return getEntityNameText(name.left) + '.' + getIdentifierText(name.right);
 }
 
 /**

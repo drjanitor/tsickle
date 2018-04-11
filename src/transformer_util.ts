@@ -6,17 +6,14 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import * as ts from 'typescript';
-import * as tsickle from './tsickle';
+import * as ts from './typescript';
+import {hasModifierFlag} from './util';
 
 /**
  * Adjusts the given CustomTransformers with additional transformers
  * to fix bugs in TypeScript.
  */
 export function createCustomTransformers(given: ts.CustomTransformers): ts.CustomTransformers {
-  if (!given.after && !given.before) {
-    return given;
-  }
   const before = given.before || [];
   before.unshift(addFileContexts);
   before.push(prepareNodesBeforeTypeScriptTransform);
@@ -174,7 +171,7 @@ function emitMissingSyntheticCommentsAfterTypescriptTransform(context: ts.Transf
           }
         } else if (
             parent3 && parent3.kind === ts.SyntaxKind.VariableStatement &&
-            tsickle.hasModifierFlag(parent3, ts.ModifierFlags.Export)) {
+            hasModifierFlag(parent3, ts.ModifierFlags.Export)) {
           // TypeScript ignores synthetic comments on exported variables.
           // find the parent ExpressionStatement like exports.foo = ...
           const expressionStmt =
@@ -186,8 +183,9 @@ function emitMissingSyntheticCommentsAfterTypescriptTransform(context: ts.Transf
         }
       }
       // TypeScript ignores synthetic comments on reexport / import statements.
-      const moduleName = extractModuleNameFromRequireVariableStatement(node);
-      if (moduleName && fileContext.importOrReexportDeclarations) {
+      // The code below re-adds them one the converted CommonJS import statements, and resets the
+      // text range to prevent previous comments from being emitted.
+      if (isCommonJsRequireStatement(node) && fileContext.importOrReexportDeclarations) {
         // Locate the original import/export declaration via the
         // text range.
         const importOrReexportDeclaration =
@@ -209,28 +207,31 @@ function emitMissingSyntheticCommentsAfterTypescriptTransform(context: ts.Transf
   };
 }
 
-function extractModuleNameFromRequireVariableStatement(node: ts.Node): string|null {
-  if (node.kind !== ts.SyntaxKind.VariableStatement) {
-    return null;
+function isCommonJsRequireStatement(node: ts.Node): boolean {
+  // CommonJS requires can be either "var x = require('...');" or (for side effect imports), just
+  // "require('...');".
+  let callExpr: ts.CallExpression;
+  if (ts.isVariableStatement(node)) {
+    const varStmt = node as ts.VariableStatement;
+    const decls = varStmt.declarationList.declarations;
+    let init: ts.Expression|undefined;
+    if (decls.length !== 1 || !(init = decls[0].initializer) ||
+        init.kind !== ts.SyntaxKind.CallExpression) {
+      return false;
+    }
+    callExpr = init as ts.CallExpression;
+  } else if (ts.isExpressionStatement(node) && ts.isCallExpression(node.expression)) {
+    callExpr = node.expression;
+  } else {
+    return false;
   }
-  const varStmt = node as ts.VariableStatement;
-  const decls = varStmt.declarationList.declarations;
-  let init: ts.Expression|undefined;
-  if (decls.length !== 1 || !(init = decls[0].initializer) ||
-      init.kind !== ts.SyntaxKind.CallExpression) {
-    return null;
-  }
-  const callExpr = init as ts.CallExpression;
   if (callExpr.expression.kind !== ts.SyntaxKind.Identifier ||
       (callExpr.expression as ts.Identifier).text !== 'require' ||
       callExpr.arguments.length !== 1) {
-    return null;
+    return false;
   }
   const moduleExpr = callExpr.arguments[0];
-  if (moduleExpr.kind !== ts.SyntaxKind.StringLiteral) {
-    return null;
-  }
-  return (moduleExpr as ts.StringLiteral).text;
+  return moduleExpr.kind === ts.SyntaxKind.StringLiteral;
 }
 
 function lastNodeWith(nodes: ts.Node[], predicate: (node: ts.Node) => boolean): ts.Node|null {
@@ -292,7 +293,7 @@ export function visitNodeWithSynthesizedComments<T extends ts.Node>(
  */
 function resetNodeTextRangeToPreventDuplicateComments<T extends ts.Node>(node: T): T {
   ts.setEmitFlags(node, (ts.getEmitFlags(node) || 0) | ts.EmitFlags.NoComments);
-  // See also addSyntheticCommentsAfterTsTransformer.
+  // See also emitMissingSyntheticCommentsAfterTypescriptTransform.
   // Note: Don't reset the textRange for ts.ExportDeclaration / ts.ImportDeclaration
   // until after the TypeScript transformer as we need the source location
   // to map the generated `require` calls back to the original
@@ -300,15 +301,13 @@ function resetNodeTextRangeToPreventDuplicateComments<T extends ts.Node>(node: T
   let allowTextRange = node.kind !== ts.SyntaxKind.ClassDeclaration &&
       node.kind !== ts.SyntaxKind.VariableDeclaration &&
       !(node.kind === ts.SyntaxKind.VariableStatement &&
-        tsickle.hasModifierFlag(node, ts.ModifierFlags.Export));
+        hasModifierFlag(node, ts.ModifierFlags.Export));
   if (node.kind === ts.SyntaxKind.PropertyDeclaration) {
     allowTextRange = false;
     const pd = node as ts.Node as ts.PropertyDeclaration;
-    // TODO(tbosch): Using pd.initializer! as the typescript typings before 2.4.0
-    // are incorrect. Remove this once we upgrade to TypeScript 2.4.0.
     node = ts.updateProperty(
-               pd, pd.decorators, pd.modifiers, resetTextRange(pd.name) as ts.PropertyName, pd.type,
-               pd.initializer!) as ts.Node as T;
+               pd, pd.decorators, pd.modifiers, resetTextRange(pd.name) as ts.PropertyName,
+               pd.questionToken, pd.type, pd.initializer) as ts.Node as T;
   }
   if (!allowTextRange) {
     node = resetTextRange(node);
@@ -319,7 +318,7 @@ function resetNodeTextRangeToPreventDuplicateComments<T extends ts.Node>(node: T
     if (!(node.flags & ts.NodeFlags.Synthesized)) {
       // need to clone as we don't want to modify source nodes,
       // as the parsed SourceFiles could be cached!
-      node = getMutableClone(node);
+      node = ts.getMutableClone(node);
     }
     const textRange = {pos: node.pos, end: node.end};
     ts.setSourceMapRange(node, textRange);
@@ -378,6 +377,10 @@ function synthesizeTrailingComments(sourceFile: ts.SourceFile, node: ts.Node): n
   return -1;
 }
 
+function arrayOf<T>(value: T|undefined|null): T[] {
+  return value ? [value] : [];
+}
+
 /**
  * Convert leading/trailing detached comment ranges of statement arrays
  * (e.g. the statements of a ts.SourceFile or ts.Block) into
@@ -395,13 +398,32 @@ function visitNodeStatementsWithSynthesizedComments<T extends ts.Node>(
   const leading = synthesizeDetachedLeadingComments(sourceFile, node, statements);
   const trailing = synthesizeDetachedTrailingComments(sourceFile, node, statements);
   if (leading.commentStmt || trailing.commentStmt) {
-    statements = ts.setTextRange(ts.createNodeArray(statements), {pos: -1, end: -1});
-    if (leading.commentStmt) {
-      statements.unshift(leading.commentStmt);
-    }
-    if (trailing.commentStmt) {
-      statements.push(trailing.commentStmt);
-    }
+    const newStatements: ts.Statement[] =
+        [...arrayOf(leading.commentStmt), ...statements, ...arrayOf(trailing.commentStmt)];
+    statements = ts.setTextRange(ts.createNodeArray(newStatements), {pos: -1, end: -1});
+
+    /**
+     * The visitor creates a new node with the new statements. However, doing so
+     * reveals a TypeScript bug.
+     * To reproduce comment out the line below and compile:
+     *
+     * // ......
+     *
+     * abstract class A {
+     * }
+     * abstract class B extends A {
+     *   // ......
+     * }
+     *
+     * Note that newlines are significant. This would result in the following:
+     * runtime error "TypeError: Cannot read property 'members' of undefined".
+     *
+     * The line below is a workaround that ensures that updateSourceFileNode and
+     * updateBlock never create new Nodes.
+     * TODO(#634): file a bug with TS team.
+     */
+    (node as ts.Node as ts.SourceFile).statements = statements;
+
     const fileContext = assertFileContext(context, sourceFile);
     if (leading.lastCommentEnd !== -1) {
       fileContext.lastCommentEnd = leading.lastCommentEnd;
@@ -427,7 +449,7 @@ function visitNodeStatementsWithSynthesizedComments<T extends ts.Node>(
  */
 function synthesizeDetachedLeadingComments(
     sourceFile: ts.SourceFile, node: ts.Node, statements: ts.NodeArray<ts.Statement>):
-    {commentStmt: ts.Statement | null, lastCommentEnd: number} {
+    {commentStmt: ts.Statement|null, lastCommentEnd: number} {
   let triviaEnd = statements.end;
   if (statements.length) {
     triviaEnd = statements[0].getStart();
@@ -438,7 +460,6 @@ function synthesizeDetachedLeadingComments(
   }
   const lastCommentEnd = detachedComments[detachedComments.length - 1].end;
   const commentStmt = createNotEmittedStatement(sourceFile);
-  ts.setEmitFlags(commentStmt, ts.EmitFlags.CustomPrologue);
   ts.setSyntheticTrailingComments(
       commentStmt, synthesizeCommentRanges(sourceFile, detachedComments));
   return {commentStmt, lastCommentEnd};
@@ -456,7 +477,7 @@ function synthesizeDetachedLeadingComments(
  */
 function synthesizeDetachedTrailingComments(
     sourceFile: ts.SourceFile, node: ts.Node, statements: ts.NodeArray<ts.Statement>):
-    {commentStmt: ts.Statement | null, lastCommentEnd: number} {
+    {commentStmt: ts.Statement|null, lastCommentEnd: number} {
   let trailingCommentStart = statements.end;
   if (statements.length) {
     const lastStmt = statements[statements.length - 1];
@@ -471,7 +492,6 @@ function synthesizeDetachedTrailingComments(
   }
   const lastCommentEnd = detachedComments[detachedComments.length - 1].end;
   const commentStmt = createNotEmittedStatement(sourceFile);
-  ts.setEmitFlags(commentStmt, ts.EmitFlags.CustomPrologue);
   ts.setSyntheticLeadingComments(
       commentStmt, synthesizeCommentRanges(sourceFile, detachedComments));
   return {commentStmt, lastCommentEnd};
@@ -556,10 +576,11 @@ function synthesizeCommentRanges(
 /**
  * Creates a non emitted statement that can be used to store synthesized comments.
  */
-function createNotEmittedStatement(sourceFile: ts.SourceFile) {
+export function createNotEmittedStatement(sourceFile: ts.SourceFile): ts.NotEmittedStatement {
   const stmt = ts.createNotEmittedStatement(sourceFile);
   ts.setOriginalNode(stmt, undefined);
   ts.setTextRange(stmt, {pos: 0, end: 0});
+  ts.setEmitFlags(stmt, ts.EmitFlags.CustomPrologue);
   return stmt;
 }
 
@@ -586,9 +607,29 @@ function getAllLeadingCommentRanges(
 }
 
 /**
+ * This is a version of `ts.visitEachChild` that works that calls our version
+ * of `updateSourceFileNode`, so that typescript doesn't lose type information
+ * for property decorators.
+ * See https://github.com/Microsoft/TypeScript/issues/17384
+ *
+ * @param sf
+ * @param statements
+ */
+export function visitEachChild(
+    node: ts.Node, visitor: ts.Visitor, context: ts.TransformationContext): ts.Node {
+  if (node.kind === ts.SyntaxKind.SourceFile) {
+    const sf = node as ts.SourceFile;
+    return updateSourceFileNode(sf, ts.visitLexicalEnvironment(sf.statements, visitor, context));
+  }
+
+  return ts.visitEachChild(node, visitor, context);
+}
+
+/**
  * This is a version of `ts.updateSourceFileNode` that works
  * well with property decorators.
  * See https://github.com/Microsoft/TypeScript/issues/17384
+ * TODO(#634): This has been fixed in TS 2.5. Investigate removal.
  *
  * @param sf
  * @param statements
@@ -600,33 +641,9 @@ export function updateSourceFileNode(
   }
   // Note: Need to clone the original file (and not use `ts.updateSourceFileNode`)
   // as otherwise TS fails when resolving types for decorators.
-  sf = getMutableClone(sf);
+  sf = ts.getMutableClone(sf);
   sf.statements = statements;
   return sf;
-}
-
-/**
- * A version of ts.getMutableClone that does not always set the synthesized flag.
- * @param node
- */
-export function getMutableClone<T extends ts.Node>(node: T): T {
-  const clone = ts.getMutableClone(node);
-  if (!(node.flags & ts.NodeFlags.Synthesized)) {
-    clone.flags &= ~ts.NodeFlags.Synthesized;
-  }
-  return clone;
-}
-
-/**
- * This is a version of `ts.visitEachChild` that does not visit children of types,
- * as this leads to errors in TypeScript < 2.4.0 and as types are not emitted anyways.
- */
-export function visitEachChildIgnoringTypes<T extends ts.Node>(
-    node: T, visitor: ts.Visitor, context: ts.TransformationContext): T {
-  if (isTypeNodeKind(node.kind) || node.kind === ts.SyntaxKind.IndexSignature) {
-    return node;
-  }
-  return ts.visitEachChild(node, visitor, context);
 }
 
 // Copied from TypeScript

@@ -9,7 +9,7 @@
 import {expect} from 'chai';
 import * as ts from 'typescript';
 
-import {createCustomTransformers, visitEachChildIgnoringTypes, visitNodeWithSynthesizedComments} from '../src/transformer_util';
+import {createCustomTransformers, visitNodeWithSynthesizedComments} from '../src/transformer_util';
 import * as tsickle from '../src/tsickle';
 import {normalizeLineEndings} from '../src/util';
 
@@ -37,7 +37,6 @@ describe('transformer util', () => {
   }
 
   describe('comments', () => {
-
     function transformComments(context: ts.TransformationContext) {
       return (sourceFile: ts.SourceFile): ts.SourceFile => {
         return visitNode(sourceFile);
@@ -49,7 +48,7 @@ describe('transformer util', () => {
         function visitNodeImpl<T extends ts.Node>(node: T): T {
           visitComments(node, ts.getSyntheticLeadingComments(node));
           visitComments(node, ts.getSyntheticTrailingComments(node));
-          return visitEachChildIgnoringTypes(node, visitNode, context);
+          return ts.visitEachChild(node, visitNode, context);
         }
 
         function visitComments(node: ts.Node, comments: ts.SynthesizedComment[]|undefined) {
@@ -217,12 +216,10 @@ describe('transformer util', () => {
       };
       const jsSources = emitWithTransform(tsSources, transformComments);
       expect(jsSources['./a.js']).to.eq([
-        `/*<${
-              ts.SyntaxKind.VariableStatement
-            }>lc1*/ const x = 1; /*<${ts.SyntaxKind.VariableStatement}>tc1*/`,
-        `/*<${
-              ts.SyntaxKind.VariableStatement
-            }>lc2*/ const y = 1; /*<${ts.SyntaxKind.VariableStatement}>tc2*/`,
+        `/*<${ts.SyntaxKind.VariableStatement}>lc1*/ const x = 1; /*<${
+            ts.SyntaxKind.VariableStatement}>tc1*/`,
+        `/*<${ts.SyntaxKind.VariableStatement}>lc2*/ const y = 1; /*<${
+            ts.SyntaxKind.VariableStatement}>tc2*/`,
         ``,
       ].join('\n'));
     });
@@ -364,7 +361,7 @@ describe('transformer util', () => {
             ts.setTextRange(synthNode, node);
             node = synthNode as ts.Node as T;
           }
-          return visitEachChildIgnoringTypes(node, visitNode, context);
+          return ts.visitEachChild(node, visitNode, context);
         }
       };
     }
@@ -423,7 +420,7 @@ describe('transformer util', () => {
                          ed, undefined, undefined, namedExports, ed.moduleSpecifier) as ts.Node as
                   T;
             }
-            return visitEachChildIgnoringTypes(node, visitNode, context);
+            return ts.visitEachChild(node, visitNode, context);
           }
         };
       }

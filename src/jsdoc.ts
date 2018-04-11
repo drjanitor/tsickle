@@ -116,6 +116,16 @@ const JSDOC_TAGS_WITH_TYPES = new Set([
 ]);
 
 /**
+ * Result of parsing a JSDoc comment. Such comments essentially are built of a list of tags.
+ * In addition to the tags, this might also contain warnings to indicate non-fatal problems
+ * while finding the tags.
+ */
+export interface ParsedJSDocComment {
+  tags: Tag[];
+  warnings?: string[];
+}
+
+/**
  * parse parses JSDoc out of a comment string.
  * Returns null if comment is not JSDoc.
  */
@@ -123,22 +133,33 @@ const JSDOC_TAGS_WITH_TYPES = new Set([
 // such as merging (below), de-duplicating certain tags (@deprecated), and special treatment for
 // others (e.g. @suppress). We should introduce a proper model class with a more suitable data
 // strucure (e.g. a Map<TagName, Values[]>).
-export function parse(comment: string): {tags: Tag[], warnings?: string[]}|null {
+export function parse(comment: string): ParsedJSDocComment|null {
   // Make sure we have proper line endings before parsing on Windows.
   comment = normalizeLineEndings(comment);
   // TODO(evanm): this is a pile of hacky regexes for now, because we
   // would rather use the better TypeScript implementation of JSDoc
   // parsing.  https://github.com/Microsoft/TypeScript/issues/7393
-  let match = comment.match(/^\/\*\*([\s\S]*?)\*\/$/);
+  const match = comment.match(/^\/\*\*([\s\S]*?)\*\/$/);
   if (!match) return null;
-  comment = match[1].trim();
+  return parseContents(match[1].trim());
+}
+
+/**
+ * parseContents parses JSDoc out of a comment text.
+ * Returns null if comment is not JSDoc.
+ *
+ * @param commentText a comment's text content, i.e. the comment w/o /* and * /.
+ */
+export function parseContents(commentText: string): {tags: Tag[], warnings?: string[]}|null {
+  // Make sure we have proper line endings before parsing on Windows.
+  commentText = normalizeLineEndings(commentText);
   // Strip all the " * " bits from the front of each line.
-  comment = comment.replace(/^\s*\*? ?/gm, '');
-  const lines = comment.split('\n');
+  commentText = commentText.replace(/^\s*\*? ?/gm, '');
+  const lines = commentText.split('\n');
   const tags: Tag[] = [];
   const warnings: string[] = [];
   for (const line of lines) {
-    match = line.match(/^@(\S+) *(.*)/);
+    let match = line.match(/^@(\S+) *(.*)/);
     if (match) {
       let [_, tagName, text] = match;
       if (tagName === 'returns') {
@@ -242,8 +263,18 @@ function tagToString(tag: Tag, escapeExtraTags = new Set<string>()): string {
 /** Tags that must only occur onces in a comment (filtered below). */
 const SINGLETON_TAGS = new Set(['deprecated']);
 
+/** Serializes a Comment out to a string, but does not include the start and end comment tokens. */
+export function toStringWithoutStartEnd(tags: Tag[], escapeExtraTags = new Set<string>()): string {
+  return serialize(tags, false, escapeExtraTags);
+}
+
 /** Serializes a Comment out to a string usable in source code. */
 export function toString(tags: Tag[], escapeExtraTags = new Set<string>()): string {
+  return serialize(tags, true, escapeExtraTags);
+}
+
+function serialize(
+    tags: Tag[], includeStartEnd: boolean, escapeExtraTags = new Set<string>()): string {
   if (tags.length === 0) return '';
   if (tags.length === 1) {
     const tag = tags[0];
@@ -256,8 +287,7 @@ export function toString(tags: Tag[], escapeExtraTags = new Set<string>()): stri
     // Otherwise, fall through to the multi-line output.
   }
 
-  let out = '';
-  out += '/**\n';
+  let out = includeStartEnd ? '/**\n' : '*\n';
   const emitted = new Set<string>();
   for (const tag of tags) {
     if (emitted.has(tag.tagName) && SINGLETON_TAGS.has(tag.tagName)) {
@@ -269,7 +299,7 @@ export function toString(tags: Tag[], escapeExtraTags = new Set<string>()): stri
     out += tagToString(tag, escapeExtraTags).split('\n').join('\n * ');
     out += '\n';
   }
-  out += ' */\n';
+  out += includeStartEnd ? ' */\n' : ' ';
   return out;
 }
 
@@ -300,7 +330,12 @@ export function merge(tags: Tag[]): Tag {
   const type = types.size > 0 ? Array.from(types).join('|') : undefined;
   const text = texts.size > 0 ? Array.from(texts).join(' / ') : undefined;
   const tag: Tag = {tagName, parameterName, type, text};
-  if (optional) tag.optional = true;
-  if (restParam) tag.restParam = true;
+  // Note: a param can either be optional or a rest param; if we merged an
+  // optional and rest param together, prefer marking it as a rest param.
+  if (restParam) {
+    tag.restParam = true;
+  } else if (optional) {
+    tag.optional = true;
+  }
   return tag;
 }

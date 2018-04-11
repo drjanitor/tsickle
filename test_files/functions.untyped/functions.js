@@ -1,8 +1,8 @@
-goog.module('test_files.functions.untyped.functions');var module = module || {id: 'test_files/functions.untyped/functions.js'};/**
+/**
  * @fileoverview added by tsickle
  * @suppress {checkTypes} checked by tsc
  */
-/**
+goog.module('test_files.functions.untyped.functions');var module = module || {id: 'test_files/functions.untyped/functions.js'};/**
  * @param {?} a
  * @return {?}
  */
@@ -82,3 +82,11 @@ TestSplat3(1, 2);
  */
 function defaultBeforeRequired(x = 1, y, ...z) { }
 defaultBeforeRequired(undefined, 2, 'h', 3);
+/**
+ * @template T
+ * @param {?} t
+ * @return {?}
+ */
+function templated(t) {
+    return 1;
+}

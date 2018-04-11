@@ -1,8 +1,8 @@
-goog.module('test_files.nullable.nullable');var module = module || {id: 'test_files/nullable/nullable.js'};/**
+/**
  * @fileoverview added by tsickle
  * @suppress {checkTypes} checked by tsc
  */
-class Primitives {
+goog.module('test_files.nullable.nullable');var module = module || {id: 'test_files/nullable/nullable.js'};class Primitives {
 }
 function Primitives_tsickle_Closure_declarations() {
     /** @type {(null|string)} */
@@ -37,6 +37,6 @@ function NonPrimitives_tsickle_Closure_declarations() {
 function takesNonNullable(val) { }
 let /** @type {{field: (null|string|number)}} */ x = { field: null };
 takesNonNullable(/** @type {(string|number)} */ ((x.field)));
-takesNonNullable(`${(((x.field)))}`);
+takesNonNullable(`${(/** @type {(string|number)} */ ((x.field)))}`);
 let /** @type {?} */ ctx;
-takesNonNullable(`org/${(((ctx.getTargetOrganization()))).key}/admin/folders`);
+takesNonNullable(`org/${(/** @type {?} */ ((ctx.getTargetOrganization()))).key}/admin/folders`);

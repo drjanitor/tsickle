@@ -6,12 +6,16 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import * as ts from 'typescript';
+import * as path from 'path';
 
+import {isClosureFileoverviewComment} from './fileoverview_comment_transformer';
 import {ModulesManifest} from './modules_manifest';
 import {getIdentifierText, Rewriter} from './rewriter';
-import {isDtsFileName} from './tsickle';
-import {toArray} from './util';
+import * as ts from './typescript';
+import {isDtsFileName} from './util';
+
+// Matches common extensions of TypeScript input filenames
+const TS_EXTENSIONS = /(\.ts|\.d\.ts|\.js|\.jsx|\.tsx)$/;
 
 export interface Es5ProcessorHost {
   /**
@@ -25,12 +29,19 @@ export interface Es5ProcessorHost {
    * for each file.
    */
   fileNameToModuleId(fileName: string): string;
-}
-
-export interface Es5ProcessorOptions {
+  /** Whether to convert CommonJS module syntax to `goog.module` Closure imports. */
   googmodule?: boolean;
+  /** Whether the emit targets ES5 or ES6+. */
   es5Mode?: boolean;
+  /** expand "import 'foo';" to "import 'foo/index';" if it points to an index file. */
+  convertIndexImportShorthand?: boolean;
+  /**
+   * An additional prelude to insert in front of the emitted code, e.g. to import a shared library.
+   */
   prelude?: string;
+
+  options: ts.CompilerOptions;
+  host: ts.ModuleResolutionHost;
 }
 
 /**
@@ -40,6 +51,26 @@ export interface Es5ProcessorOptions {
 export function extractGoogNamespaceImport(tsImport: string): string|null {
   if (tsImport.match(/^goog:/)) return tsImport.substring('goog:'.length);
   return null;
+}
+
+/**
+ * Convert from implicit `import {} from 'pkg'` to `import {} from 'pkg/index'.
+ * TypeScript supports the shorthand, but not all ES6 module loaders do.
+ * Workaround for https://github.com/Microsoft/TypeScript/issues/12597
+ */
+export function resolveIndexShorthand(
+    host: {options: ts.CompilerOptions, host: ts.ModuleResolutionHost}, fileName: string,
+    imported: string): string {
+  const resolved = ts.resolveModuleName(imported, fileName, host.options, host.host);
+  if (!resolved || !resolved.resolvedModule) return imported;
+  const requestedModule = imported.replace(TS_EXTENSIONS, '');
+  const resolvedModule = resolved.resolvedModule.resolvedFileName.replace(TS_EXTENSIONS, '');
+  if (resolvedModule.indexOf('node_modules') === -1 &&
+      requestedModule.substr(requestedModule.lastIndexOf('/')) !==
+          resolvedModule.substr(resolvedModule.lastIndexOf('/'))) {
+    imported = './' + path.relative(path.dirname(fileName), resolvedModule).replace(path.sep, '/');
+  }
+  return imported;
 }
 
 /**
@@ -73,25 +104,24 @@ class ES5Processor extends Rewriter {
   /** unusedIndex is used to generate fresh symbols for unnamed imports. */
   unusedIndex = 0;
 
-  constructor(
-      private host: Es5ProcessorHost, private options: Es5ProcessorOptions, file: ts.SourceFile) {
+  constructor(private host: Es5ProcessorHost, file: ts.SourceFile) {
     super(file);
   }
 
   process(): {output: string, referencedModules: string[]} {
+    this.emitFileComment();
+
     const moduleId = this.host.fileNameToModuleId(this.file.fileName);
-    // TODO(evanm): only emit the goog.module *after* the first comment,
-    // so that @suppress statements work.
     const moduleName = this.host.pathToModuleName('', this.file.fileName);
     // NB: No linebreak after module call so sourcemaps are not offset.
     this.emit(`goog.module('${moduleName}');`);
-    if (this.options.prelude) this.emit(this.options.prelude);
+    if (this.host.prelude) this.emit(this.host.prelude);
     // Allow code to use `module.id` to discover its module URL, e.g. to resolve
     // a template URL against.
     // Uses 'var', as this code is inserted in ES6 and ES5 modes.
     // The following pattern ensures closure doesn't throw an error in advanced
     // optimizations mode.
-    if (this.options.es5Mode) {
+    if (this.host.es5Mode) {
       this.emit(`var module = module || {id: '${moduleId}'};`);
     } else {
       // The `exports = {}` serves as a default export to disable Closure Compiler's error checking
@@ -99,7 +129,15 @@ class ES5Processor extends Rewriter {
       // accesses exports through the module object, so mutable exports work.
       // It is only inserted in ES6 because we strip `.default` accesses in ES5 mode, which breaks
       // when assigning an `exports = {}` object and then later accessing it.
-      this.emit(` exports = {}; var module = {id: '${moduleId}'};`);
+      // However Closure bails if code later on assigns into exports directly, as we do if we have
+      // an "exports = " block, so skip emit if that's the case.
+      if (!this.file.statements.find(
+              s => ts.isExpressionStatement(s) && this.isModuleExportsAssignment(s))) {
+        this.emit(` exports = {};`);
+      }
+      // The module=module bit suppresses an unused variable warning which
+      // may trigger depending on the compilation flags.
+      this.emit(` var module = module || {id: '${moduleId}'}; module = module;`);
     }
 
     let pos = 0;
@@ -110,11 +148,25 @@ class ES5Processor extends Rewriter {
     }
     this.writeRange(this.file, pos, this.file.getEnd());
 
-    const referencedModules = toArray(this.moduleVariables.keys());
+    const referencedModules = Array.from(this.moduleVariables.keys());
     // Note: don't sort referencedModules, as the keys are in the same order
     // they occur in the source file.
     const {output} = this.getOutput();
     return {output, referencedModules};
+  }
+
+  /** Emits file comments for the current source file, if any. */
+  private emitFileComment() {
+    const leadingComments = ts.getLeadingCommentRanges(this.file.getFullText(), 0) || [];
+    const fileComment = leadingComments.find(c => {
+      if (c.kind !== ts.SyntaxKind.MultiLineCommentTrivia) return false;
+      const commentText = this.file.getFullText().substring(c.pos, c.end);
+      return isClosureFileoverviewComment(commentText);
+    });
+    if (!fileComment) return;
+    let end = fileComment.end;
+    if (fileComment.hasTrailingNewLine) end++;
+    this.writeLeadingTrivia(this.file, end);
   }
 
   /**
@@ -126,6 +178,7 @@ class ES5Processor extends Rewriter {
   visitTopLevel(node: ts.Node) {
     switch (node.kind) {
       case ts.SyntaxKind.ExpressionStatement:
+        const exprStatement = node as ts.ExpressionStatement;
         // Check for "use strict" and skip it if necessary.
         if (!this.strippedStrict && this.isUseStrict(node)) {
           this.emitCommentWithoutStatementBody(node);
@@ -140,8 +193,16 @@ class ES5Processor extends Rewriter {
         }
         // Check for
         //   Object.defineProperty(exports, "__esModule", ...);
-        if (this.isEsModuleProperty(node as ts.ExpressionStatement)) {
+        if (this.isEsModuleProperty(exprStatement)) {
           this.emitCommentWithoutStatementBody(node);
+          return;
+        }
+        // Check for
+        //   module.exports = ...;
+        // Rewrite to goog.module's
+        //   exports = ...;
+        if (this.isModuleExportsAssignment(exprStatement)) {
+          this.emitExportsAssignment(exprStatement);
           return;
         }
         // Otherwise fall through to default processing.
@@ -197,7 +258,7 @@ class ES5Processor extends Rewriter {
       const varName = getIdentifierText(decl.name as ts.Identifier);
       if (!decl.initializer || decl.initializer.kind !== ts.SyntaxKind.CallExpression) return false;
       const call = decl.initializer as ts.CallExpression;
-      const require = this.isRequire(call);
+      const require = this.extractRequire(call);
       if (!require) return false;
       this.writeLeadingTrivia(node);
       this.emitGoogRequire(varName, require);
@@ -206,13 +267,14 @@ class ES5Processor extends Rewriter {
       // It's possibly of the form:
       // - require(...);
       // - __export(require(...));
-      // Both are CallExpressions.
+      // - tslib_1.__exportStar(require(...));
+      // All are CallExpressions.
       const exprStmt = node as ts.ExpressionStatement;
       const expr = exprStmt.expression;
       if (expr.kind !== ts.SyntaxKind.CallExpression) return false;
-      const call = expr as ts.CallExpression;
+      let call = expr as ts.CallExpression;
 
-      let require = this.isRequire(call);
+      let require = this.extractRequire(call);
       let isExport = false;
       if (!require) {
         // If it's an __export(require(...)), we emit:
@@ -220,8 +282,11 @@ class ES5Processor extends Rewriter {
         //   __export(x);
         // This extra variable is necessary in case there's a later import of the
         // same module name.
-        require = this.isExportRequire(call);
-        isExport = require != null;
+        const innerCall = this.isExportRequire(call);
+        if (!innerCall) return false;
+        isExport = true;
+        call = innerCall;  // Update call to point at the require() expression.
+        require = this.extractRequire(call);
       }
       if (!require) return false;
 
@@ -229,7 +294,12 @@ class ES5Processor extends Rewriter {
       const varName = this.emitGoogRequire(null, require);
 
       if (isExport) {
-        this.emit(`__export(${varName});`);
+        // node is a statement containing a require() in it, while
+        // requireCall is that call.  We replace the require() call
+        // with the variable we emitted.
+        const fullStatement = node.getText();
+        const requireCall = call.getText();
+        this.emit(fullStatement.replace(requireCall, varName));
       }
       return true;
     } else {
@@ -261,6 +331,9 @@ class ES5Processor extends Rewriter {
       modName = nsImport;
       isNamespaceImport = true;
     } else {
+      if (this.host.convertIndexImportShorthand) {
+        tsImport = resolveIndexShorthand(this.host, this.file.fileName, tsImport);
+      }
       modName = this.host.pathToModuleName(this.file.fileName, tsImport);
     }
 
@@ -292,7 +365,7 @@ class ES5Processor extends Rewriter {
    * Returns the string argument if call is of the form
    *   require('foo')
    */
-  isRequire(call: ts.CallExpression): string|null {
+  extractRequire(call: ts.CallExpression): string|null {
     // Verify that the call is a call to require(...).
     if (call.expression.kind !== ts.SyntaxKind.Identifier) return null;
     const ident = call.expression as ts.Identifier;
@@ -306,24 +379,56 @@ class ES5Processor extends Rewriter {
   }
 
   /**
-   * Returns the inner string if call is of the form
-   *   __export(require('foo'))
+   * Returns the require() call node if the outer call is of the forms:
+   * - __export(require('foo'))
+   * - tslib_1.__exportStar(require('foo'), bar)
    */
-  isExportRequire(call: ts.CallExpression): string|null {
-    if (call.expression.kind !== ts.SyntaxKind.Identifier) return null;
-    const ident = call.expression as ts.Identifier;
-    if (ident.getText() !== '__export') return null;
+  isExportRequire(call: ts.CallExpression): ts.CallExpression|null {
+    switch (call.expression.kind) {
+      case ts.SyntaxKind.Identifier:
+        const ident = call.expression as ts.Identifier;
+        // TS_24_COMPAT: accept three leading underscores
+        if (ident.text !== '__export' && ident.text !== '___export') {
+          return null;
+        }
+        break;
+      case ts.SyntaxKind.PropertyAccessExpression:
+        const propAccess = call.expression as ts.PropertyAccessExpression;
+        // TS_24_COMPAT: accept three leading underscores
+        if (propAccess.name.text !== '__exportStar' && propAccess.name.text !== '___exportStar') {
+          return null;
+        }
+        break;
+      default:
+        return null;
+    }
 
-    // Verify the call takes a single call argument and check it.
-    if (call.arguments.length !== 1) return null;
+    // Verify the call takes at least one argument and check it.
+    if (call.arguments.length < 1) return null;
     const arg = call.arguments[0];
     if (arg.kind !== ts.SyntaxKind.CallExpression) return null;
-    return this.isRequire(arg as ts.CallExpression);
+    const innerCall = arg as ts.CallExpression;
+    if (!this.extractRequire(innerCall)) return null;
+    return innerCall;
   }
 
   isEsModuleProperty(expr: ts.ExpressionStatement): boolean {
     // We're matching the explicit source text generated by the TS compiler.
     return expr.getText() === 'Object.defineProperty(exports, "__esModule", { value: true });';
+  }
+
+  isModuleExportsAssignment(expr: ts.ExpressionStatement): boolean {
+    // Looking for "module.exports = ...;"
+    if (!ts.isBinaryExpression(expr.expression)) return false;
+    if (expr.expression.operatorToken.kind !== ts.SyntaxKind.EqualsToken) return false;
+    return expr.expression.left.getText() === 'module.exports';
+  }
+
+  emitExportsAssignment(expr: ts.ExpressionStatement) {
+    this.emitCommentWithoutStatementBody(expr);
+    this.emit('exports =');
+    this.visit((expr.expression as ts.BinaryExpression).right);
+    this.emit(';');
   }
 
   /**
@@ -372,20 +477,19 @@ class ES5Processor extends Rewriter {
  * @param prelude An additional prelude to insert after the `goog.module` call,
  *     e.g. with additional imports or requires.
  */
-export function processES5(
-    host: Es5ProcessorHost, options: Es5ProcessorOptions, fileName: string,
-    content: string): {output: string, referencedModules: string[]} {
+export function processES5(host: Es5ProcessorHost, fileName: string, content: string):
+    {output: string, referencedModules: string[]} {
   const file = ts.createSourceFile(fileName, content, ts.ScriptTarget.ES5, true);
-  return new ES5Processor(host, options, file).process();
+  return new ES5Processor(host, file).process();
 }
 
 export function convertCommonJsToGoogModuleIfNeeded(
-    host: Es5ProcessorHost, options: Es5ProcessorOptions, modulesManifest: ModulesManifest,
-    fileName: string, content: string): string {
-  if (!options.googmodule || isDtsFileName(fileName)) {
+    host: Es5ProcessorHost, modulesManifest: ModulesManifest, fileName: string,
+    content: string): string {
+  if (!host.googmodule || isDtsFileName(fileName)) {
     return content;
   }
-  const {output, referencedModules} = processES5(host, options, fileName, content);
+  const {output, referencedModules} = processES5(host, fileName, content);
 
   const moduleName = host.pathToModuleName('', fileName);
   modulesManifest.addModule(fileName, moduleName);

@@ -1,11 +1,8 @@
-goog.module('test_files.decorator.decorator');var module = module || {id: 'test_files/decorator/decorator.js'};/**
+/**
  * @fileoverview added by tsickle
  * @suppress {checkTypes} checked by tsc
  */
-
-// OtherClass is reachable via the imports for './external' and './external2'.
-// Test that were using it from the right import, and not just the first
-// that allows access to the value. That is important when imports are elided.
+goog.module('test_files.decorator.decorator');var module = module || {id: 'test_files/decorator/decorator.js'};
 var external_1 = goog.require('test_files.decorator.external');
 const tsickle_forward_declare_1 = goog.forwardDeclare("test_files.decorator.external");
 var external2_1 = goog.require('test_files.decorator.external2');

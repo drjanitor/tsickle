@@ -29,12 +29,52 @@ var HTMLTableHeaderCellElement;
 
 /**
  * Closure's NodeList is parameterized itself, there is no NodeListOf.
- * @typedef {!NodeList}
+ * @constructor
+ * @template T
+ * @extends {NodeList<T>}
  */
 var NodeListOf;
 
 /**
  * Closure models this as a plain Array.
- * @typedef {Array<string>|null}
+ * @typedef {!IArrayLike<string>|null}
  */
 var RegExpExecArray;
+
+/**
+ * @record
+ * @template T
+ * @extends {IArrayLike<T>}
+ */
+function ReadonlyArray() {}
+
+/**
+ * @constructor
+ * @template K, V
+ * @extends {Map<K, V>}
+ */
+function ReadonlyMap() {}
+
+/**
+ * @constructor
+ * @template T
+ * @extends {Set<T>}
+ */
+function ReadonlySet() {}
+
+/**
+ * @record
+ * @template T
+ * @extends {IThenable<T>}
+ */
+function PromiseLike() {};
+
+/** @typedef {function(new:Promise)} */
+var PromiseConstructor;
+
+/** @typedef {function(new:Promise, function(function(*=), function(*=)))} */
+var PromiseConstructorLike;
+
+/** @typedef {function(new:symbol)} */
+var SymbolConstructor;
+

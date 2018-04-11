@@ -10,19 +10,8 @@
 // ES6 maps and sets when running on node 4, which doesn't
 // support Iterators completely.
 
+import * as path from 'path';
 import * as ts from 'typescript';
-
-export function toArray<T>(iterator: Iterator<T>): T[] {
-  const array: T[] = [];
-  while (true) {
-    const ir = iterator.next();
-    if (ir.done) {
-      break;
-    }
-    array.push(ir.value);
-  }
-  return array;
-}
 
 /**
  * Constructs a new ts.CompilerHost that overlays sources in substituteSource
@@ -49,7 +38,7 @@ export function createSourceReplacingCompilerHost(
 
   function getSourceFile(
       fileName: string, languageVersion: ts.ScriptTarget,
-      onError?: (message: string) => void): ts.SourceFile {
+      onError?: (message: string) => void): ts.SourceFile|undefined {
     const path: string = ts.sys.resolvePath(fileName);
     const sourceText = substituteSource.get(path);
     if (sourceText !== undefined) {
@@ -60,38 +49,38 @@ export function createSourceReplacingCompilerHost(
 }
 
 /**
- * Constructs a new ts.CompilerHost that overlays sources in substituteSource
- * over another ts.CompilerHost.
- *
- * @param outputFiles map to fill with source file name -> output text.
- */
-export function createOutputRetainingCompilerHost(
-    outputFiles: Map<string, string>, delegate: ts.CompilerHost): ts.CompilerHost {
-  return {
-    getSourceFile: delegate.getSourceFile,
-    getCancellationToken: delegate.getCancellationToken,
-    getDefaultLibFileName: delegate.getDefaultLibFileName,
-    writeFile,
-    getCurrentDirectory: delegate.getCurrentDirectory,
-    getCanonicalFileName: delegate.getCanonicalFileName,
-    useCaseSensitiveFileNames: delegate.useCaseSensitiveFileNames,
-    getNewLine: delegate.getNewLine,
-    fileExists: delegate.fileExists,
-    readFile: delegate.readFile,
-    directoryExists: delegate.directoryExists,
-    getDirectories: delegate.getDirectories,
-  };
-
-  function writeFile(
-      fileName: string, content: string, writeByteOrderMark: boolean,
-      onError?: (message: string) => void, sourceFiles?: ts.SourceFile[]): void {
-    outputFiles.set(fileName, content);
-  }
-}
-
-/**
  * Returns the input string with line endings normalized to '\n'.
  */
 export function normalizeLineEndings(input: string): string {
   return input.replace(/\r\n/g, '\n');
+}
+
+/** @return true if node has the specified modifier flag set. */
+export function hasModifierFlag(node: ts.Node, flag: ts.ModifierFlags): boolean {
+  return (ts.getCombinedModifierFlags(node) & flag) !== 0;
+}
+
+export function isDtsFileName(fileName: string): boolean {
+  return /\.d\.ts$/.test(fileName);
+}
+
+/**
+ * Determine the lowest-level common parent directory of the given list of files.
+ */
+export function getCommonParentDirectory(fileNames: string[]): string {
+  const pathSplitter = /[\/\\]+/;
+  const commonParent = fileNames[0].split(pathSplitter);
+  for (let i = 1; i < fileNames.length; i++) {
+    const thisPath = fileNames[i].split(pathSplitter);
+    let j = 0;
+    while (thisPath[j] === commonParent[j]) {
+      j++;
+    }
+    commonParent.length = j;  // Truncate without copying the array
+  }
+  if (commonParent.length === 0) {
+    return '/';
+  } else {
+    return commonParent.join(path.sep);
+  }
 }

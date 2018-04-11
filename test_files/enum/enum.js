@@ -1,8 +1,11 @@
-goog.module('test_files.enum.enum');var module = module || {id: 'test_files/enum/enum.js'};/**
+// Warning at test_files/enum/enum.ts:2:7: should not emit a 'never' type
+// Warning at test_files/enum/enum.ts:8:33: Declared property XYZ accessed with quotes. This can lead to renaming bugs. A better fix is to use 'declare interface' on the declaration.
+// Warning at test_files/enum/enum.ts:15:22: Declared property XYZ accessed with quotes. This can lead to renaming bugs. A better fix is to use 'declare interface' on the declaration.
+/**
  * @fileoverview added by tsickle
  * @suppress {checkTypes} checked by tsc
  */
-
+goog.module('test_files.enum.enum');var module = module || {id: 'test_files/enum/enum.js'};
 // Line with a missing semicolon should not break the following enum.
 const /** @type {!Array<?>} */ EnumTestMissingSemi = [];
 /** @enum {number} */
@@ -13,8 +16,8 @@ EnumTest1[EnumTest1.PI] = "PI";
 // ways allowed of enums.
 let /** @type {EnumTest1} */ enumTestValue = EnumTest1.XYZ;
 let /** @type {EnumTest1} */ enumTestValue2 = EnumTest1['XYZ'];
-let /** @type {string} */ enumNumIndex = EnumTest1[((null))];
-let /** @type {number} */ enumStrIndex = EnumTest1[((null))];
+let /** @type {string} */ enumNumIndex = EnumTest1[/** @type {number} */ ((null))];
+let /** @type {number} */ enumStrIndex = EnumTest1[/** @type {string} */ ((null))];
 /**
  * @param {EnumTest1} val
  * @return {void}
@@ -36,6 +39,7 @@ const ComponentIndex = {
     Scheme: 1,
     UserInfo: 2,
     Domain: 0,
+    // Be sure to exercise the code with a 0 enum value.
     UserInfo2: 2,
 };
 ComponentIndex[ComponentIndex.Scheme] = "Scheme";
@@ -48,7 +52,7 @@ const ConstEnum = {
     EMITTED_ENUM_VALUE_2: 1,
 };
 exports.ConstEnum = ConstEnum;
-let /** @type {ConstEnum} */ constEnumValue = ConstEnum.EMITTED_ENUM_VALUE;
+let /** @type {ConstEnum} */ constEnumValue = 0 /* EMITTED_ENUM_VALUE */;
 /**
  * @record
  */
@@ -67,3 +71,23 @@ const EnumWithNonConstValues = {
 };
 EnumWithNonConstValues[EnumWithNonConstValues.Scheme] = "Scheme";
 EnumWithNonConstValues[EnumWithNonConstValues.UserInfoRenamed] = "UserInfoRenamed";
+/** @enum {string} */
+const StringEnum = {
+    STR: 'abc',
+    OTHER_STR: 'xyz',
+};
+/** @enum {number} */
+const StringKeyEnum = {
+    "string key": 1,
+    "string key 2": 0,
+};
+StringKeyEnum[StringKeyEnum["string key"]] = "string key";
+StringKeyEnum[StringKeyEnum["string key 2"]] = "string key 2";
+/** @enum {?} */
+const MixedEnum = {
+    STR: 'abc',
+    NUM: 3,
+    "string key": 4,
+};
+MixedEnum[MixedEnum.NUM] = "NUM";
+MixedEnum[MixedEnum["string key"]] = "string key";

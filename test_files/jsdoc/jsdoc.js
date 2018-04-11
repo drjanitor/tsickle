@@ -1,8 +1,27 @@
-goog.module('test_files.jsdoc.jsdoc');var module = module || {id: 'test_files/jsdoc/jsdoc.js'};/**
+// Warning at test_files/jsdoc/jsdoc.ts:16:1: the type annotation on @param is redundant with its TypeScript type, remove the {...} part
+// Warning at test_files/jsdoc/jsdoc.ts:35:3: the type annotation on @export is redundant with its TypeScript type, remove the {...} part
+// Warning at test_files/jsdoc/jsdoc.ts:40:3: @type annotations are redundant with TypeScript equivalents
+// Warning at test_files/jsdoc/jsdoc.ts:43:3: @enum annotations are redundant with TypeScript equivalents
+// Warning at test_files/jsdoc/jsdoc.ts:46:3: the type annotation on @const is redundant with its TypeScript type, remove the {...} part
+// Warning at test_files/jsdoc/jsdoc.ts:49:3: @typedef annotations are redundant with TypeScript equivalents
+// Warning at test_files/jsdoc/jsdoc.ts:35:3: the type annotation on @export is redundant with its TypeScript type, remove the {...} part
+// Warning at test_files/jsdoc/jsdoc.ts:40:3: @type annotations are redundant with TypeScript equivalents
+// Warning at test_files/jsdoc/jsdoc.ts:43:3: @enum annotations are redundant with TypeScript equivalents
+// Warning at test_files/jsdoc/jsdoc.ts:46:3: the type annotation on @const is redundant with its TypeScript type, remove the {...} part
+// Warning at test_files/jsdoc/jsdoc.ts:49:3: @typedef annotations are redundant with TypeScript equivalents
+// Warning at test_files/jsdoc/jsdoc.ts:53:1: @template annotations are redundant with TypeScript equivalents
+// Warning at test_files/jsdoc/jsdoc.ts:56:1: use index signatures (`[k: string]: type`) instead of @dict
+// Warning at test_files/jsdoc/jsdoc.ts:59:1: @lends annotations are redundant with TypeScript equivalents
+// Warning at test_files/jsdoc/jsdoc.ts:65:1: @this annotations are redundant with TypeScript equivalents
+// Warning at test_files/jsdoc/jsdoc.ts:68:1: @interface annotations are redundant with TypeScript equivalents
+// Warning at test_files/jsdoc/jsdoc.ts:77:1: @extends annotations are redundant with TypeScript equivalents
+// @implements annotations are redundant with TypeScript equivalents
+// Warning at test_files/jsdoc/jsdoc.ts:84:3: @constructor annotations are redundant with TypeScript equivalents
+/**
  * @fileoverview added by tsickle
  * @suppress {checkTypes} checked by tsc
  */
-/**
+goog.module('test_files.jsdoc.jsdoc');var module = module || {id: 'test_files/jsdoc/jsdoc.js'};/**
  * @param {string} foo a string.
  * @param {string} baz
  * @return {string} return comment.
@@ -63,7 +82,7 @@ function JSDocTest_tsickle_Closure_declarations() {
     JSDocTest.prototype.stringWithoutJSDoc;
     /** @type {number} */
     JSDocTest.prototype.typedThing;
-    /** @type {?} */
+    /** @type {{A: string}} */
     JSDocTest.prototype.badEnumThing;
     /** @type {string} */
     JSDocTest.prototype.badConstThing;

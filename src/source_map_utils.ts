@@ -7,7 +7,30 @@
  */
 
 import {RawSourceMap, SourceMapConsumer, SourceMapGenerator} from 'source-map';
-import * as ts from 'typescript';
+import * as ts from './typescript';
+
+/**
+ * This interface was defined in @types/source-map but is absent from the typings
+ * distributed in the source-map package.
+ * Copied from https://unpkg.com/@types/source-map@0.5.2/index.d.ts
+ * see https://github.com/angular/tsickle/issues/750
+ */
+export interface BasicSourceMapConsumer extends SourceMapConsumer {
+  file: string;
+  sourceRoot: string;
+  sources: string[];
+  sourcesContent: string[];
+}
+
+/**
+ * The toJSON method is introduced in
+ * https://github.com/mozilla/source-map/commit/7c06ac83dd6d75e65f71727184a2d8630a15bf58#diff-7945f6bb445d956794564e098ef20bb3
+ * However there is a breaking change in 0.7.
+ * see https://github.com/angular/tsickle/issues/750
+ */
+export type SourceMapGeneratorToJson = SourceMapGenerator&{
+  toJSON(): RawSourceMap;
+};
 
 /**
  * Return a new RegExp object every time we want one because the
@@ -87,7 +110,7 @@ export function sourceMapConsumerToGenerator(sourceMapConsumer: SourceMapConsume
 export function sourceMapGeneratorToConsumer(
     sourceMapGenerator: SourceMapGenerator, fileName?: string,
     sourceName?: string): SourceMapConsumer {
-  const rawSourceMap = sourceMapGenerator.toJSON();
+  const rawSourceMap = (sourceMapGenerator as SourceMapGeneratorToJson).toJSON();
   if (sourceName) {
     rawSourceMap.sources = [sourceName];
   }
@@ -97,60 +120,53 @@ export function sourceMapGeneratorToConsumer(
   return new SourceMapConsumer(rawSourceMap);
 }
 
-export function sourceMapTextToConsumer(sourceMapText: string): SourceMapConsumer {
-  // tslint:disable-next-line:no-any constructor actually supports text.
-  const sourceMapJson: any = sourceMapText;
-  return new SourceMapConsumer(sourceMapJson);
+export function sourceMapTextToConsumer(sourceMapText: string): BasicSourceMapConsumer {
+  // the SourceMapConsumer constructor returns a BasicSourceMapConsumer or an
+  // IndexedSourceMapConsumer depending on if you pass in a RawSourceMap or a
+  // RawIndexMap or the string json of either.  In this case we're passing in
+  // the string for a RawSourceMap, so we always get a BasicSourceMapConsumer
+  //
+  // Note, the typings distributed with the library are missing this constructor overload,
+  // so we must type it as any, see https://github.com/angular/tsickle/issues/750
+  // tslint:disable-next-line no-any
+  return new SourceMapConsumer(sourceMapText as any) as BasicSourceMapConsumer;
 }
 
 export function sourceMapTextToGenerator(sourceMapText: string): SourceMapGenerator {
-  // tslint:disable-next-line:no-any constructor actually supports text.
-  const sourceMapJson: any = sourceMapText;
-  return SourceMapGenerator.fromSourceMap(sourceMapTextToConsumer(sourceMapJson));
+  return SourceMapGenerator.fromSourceMap(sourceMapTextToConsumer(sourceMapText));
 }
 
+/**
+ * A position in a source map. All offsets are zero-based.
+ */
 export interface SourcePosition {
-  // 0 based
+  /** 0 based */
   column: number;
-  // 0 based
+  /** 0 based */
   line: number;
-  // 0 based
+  /** 0 based full offset in the file. */
   position: number;
 }
 
 export interface SourceMapper {
+  /**
+   * Logically shift all source positions by `offset`.
+   *
+   * This method is useful if code has to prepend additional text to the generated output after
+   * source mappings have already been generated. The source maps are then transparently adjusted
+   * during TypeScript output generation.
+   */
+  shiftByOffset(offset: number): void;
+  /**
+   * Adds a mapping from `originalNode` in `original` position to its new location in the output,
+   * spanning from `generated` (an offset in the file) for `length` characters.
+   */
   addMapping(
       originalNode: ts.Node, original: SourcePosition, generated: SourcePosition,
       length: number): void;
 }
 
 export const NOOP_SOURCE_MAPPER: SourceMapper = {
-  // tslint:disable-next-line:no-empty
-  addMapping() {}
+  shiftByOffset() {/* no-op */},
+  addMapping() {/* no-op */},
 };
-
-export class DefaultSourceMapper implements SourceMapper {
-  /** The source map that's generated while rewriting this file. */
-  public sourceMap = new SourceMapGenerator();
-
-  constructor(private fileName: string) {
-    this.sourceMap.addMapping({
-      // tsc's source maps use 1-indexed lines, 0-indexed columns
-      original: {line: 1, column: 0},
-      generated: {line: 1, column: 0},
-      source: this.fileName,
-    });
-  }
-
-  addMapping(node: ts.Node, original: SourcePosition, generated: SourcePosition, length: number):
-      void {
-    if (length > 0) {
-      this.sourceMap.addMapping({
-        // tsc's source maps use 1-indexed lines, 0-indexed columns
-        original: {line: original.line + 1, column: original.column},
-        generated: {line: generated.line + 1, column: generated.column},
-        source: this.fileName,
-      });
-    }
-  }
-}
